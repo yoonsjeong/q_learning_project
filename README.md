@@ -8,7 +8,7 @@ Dante Gil-Marin, Yoon Jeong
 
 2. A 1-2 sentence description of how your team plans to implement each of the following components of this project as well as a 1-2 sentence description of how you will test each component:
 
-Q-learning algorithm
+### Q-learning algorithm
 - Executing the Q-learning algorithm
 
 **Implementation**: We will have a while loop executing the algorithm outlined in the write-up. Selection of a_t at random will be done using the python random library. We will perform the a_t by altering the action matrix. We will receive the reward by using the state matrix.
@@ -28,7 +28,7 @@ Q-learning algorithm
 **Testing**: Similarly to the above, we will test this by using our Q-matrix solved by hand and checking to see if the action the robot chooses is the same as the one determined by hand.
 
 
-Robot perception
+### Robot perception
 - Determining the identities and locations of the three colored dumbbells
 
 **Implementation**:  We will use color recognition using OpenCV using the range of hues available in the HSV swatches.
@@ -41,7 +41,7 @@ Robot perception
 
 **Testing**: We will have the robot print out what digit it is seeing when it recognizes something. Then we will show it different labeled blocks making sure it identifies them correctly.
 
-Robot manipulation & movement
+### Robot manipulation & movement
 - Picking up and putting down the dumbbells with the OpenMANIPULATOR arm
 
 **Implementation**: We will use the `/q_learning/robot_action` rospy subscription to move the robot arm.
