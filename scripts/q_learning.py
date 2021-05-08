@@ -4,6 +4,8 @@ import rospy
 import numpy as np
 import os
 
+from q_learning_project.msg import QMatrix, QLearningReward, RobotMoveDBToBlock
+
 # Path of directory on where this file is located
 path_prefix = os.path.dirname(__file__) + "/action_states/"
 
@@ -11,6 +13,14 @@ class QLearning(object):
     def __init__(self):
         # Initialize this node
         rospy.init_node("q_learning")
+
+        # Setup publishers and subscribers
+        self.q_pub = rospy.Publisher("/q_learning/q_matrix", QMatrix, queue_size=10)
+        self.action_pub = rospy.Publisher("/q_learning/robot_action", RobotMoveDBToBlock)
+        rospy.Subscriber("/q_learning/reward", QLearningReward, self.get_reward)
+
+        # Give some time to initialize
+        rospy.sleep(2)
 
         # Fetch pre-built action matrix. This is a 2d numpy array where row indexes
         # correspond to the starting state and column indexes are the next states.
@@ -44,10 +54,23 @@ class QLearning(object):
         self.states = np.loadtxt(path_prefix + "states.txt")
         self.states = list(map(lambda x: list(map(lambda y: int(y), x)), self.states))
 
+        # initialize q table
+        # 64 rows = number of states
+        # 9 cols = number of actions
+        self.q_matrix = np.zeros((64, 9))
+
+
+    def get_reward(self):
+        pass
+    def get_action(self):
+        pass
+
     def save_q_matrix(self):
-        # TODO: You'll want to save your q_matrix to a file once it is done to
-        # avoid retraining
-        return
+        self.q_pub.publish(self.q_matrix)
+        
+        act_msg = self.action_matrix[0][12]
+        self.action_pub.publish(act_msg)
+        
 
 if __name__ == "__main__":
     node = QLearning()
