@@ -1,1 +1,9 @@
-<!-- TODO -->
+<launch>
+
+    <!-- run virtual world restting node -->
+    <node name="reset_virtual_world_q_learning" pkg="q_learning_project" type="virtual_reset_world.py" respawn="true" />
+    
+    <!-- run q matrix scripts -->
+    <node name="q_matrix_train_and_save" pkg="q_learning_project" type="q_learning.py" />
+  
+</launch>

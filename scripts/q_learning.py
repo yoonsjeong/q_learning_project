@@ -4,6 +4,7 @@ import rospy
 import numpy as np
 import os
 
+import random
 from q_learning_project.msg import QMatrix, QLearningReward, RobotMoveDBToBlock
 
 # Path of directory on where this file is located
@@ -59,9 +60,14 @@ class QLearning(object):
         # 9 cols = number of actions
         self.q_matrix = np.zeros((64, 9))
 
+        # save states
+        self.prev_state = -1
+        self.curr_state = 0
+
 
     def get_reward(self):
         pass
+        
     def get_action(self):
         pass
 
@@ -70,7 +76,33 @@ class QLearning(object):
         
         act_msg = self.action_matrix[0][12]
         self.action_pub.publish(act_msg)
-        
+    
+    def check_converged(self):
+        """ Checks to see if the Q matrix has converged or not.
+        """
+        return False
+
+    def q_learning_algorithm(self):
+        """ Implements the Q Learning Algorithm as outlined in the write-up
+        """
+        # intialize Q
+        self.q_matrix
+        t = 0
+        while self.check_converged():
+            # select a_t at random
+            action_row = self.action_matrix[self.curr_state][:]
+            actions = []
+            for i, action in enumerate(action_row):
+                if action > 0: actions.append(i)
+            a_t = random.choice(actions)
+            # perform a_t
+            self.curr_state = self.action_matrix[self.curr_state][a_t]
+            # receive r_t
+            r_t = self.get_reward()
+            # update Q
+            self.q_matrix
+            # update t
+            t += 1
 
 if __name__ == "__main__":
     node = QLearning()
