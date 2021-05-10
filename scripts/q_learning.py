@@ -5,10 +5,20 @@ import numpy as np
 import os
 
 import random
-from q_learning_project.msg import QMatrix, QLearningReward, RobotMoveDBToBlock
+from q_learning_project.msg import QLearningReward, RobotMoveDBToBlock
 
 # Path of directory on where this file is located
 path_prefix = os.path.dirname(__file__) + "/action_states/"
+
+class QMatrixRow(object):
+    def __init__(self, row):
+        self.q_matrix_row = row
+
+class QMatrix(object):
+    def __init__(self, np_matrix):
+        self.q_matrix = []
+        for i in np_matrix:
+            self.q_matrix.append(QMatrixRow(i))
 
 class QLearning(object):
     def __init__(self):
@@ -18,7 +28,7 @@ class QLearning(object):
         # Setup publishers and subscribers
         self.q_pub = rospy.Publisher("/q_learning/q_matrix", QMatrix, queue_size=10)
         self.action_pub = rospy.Publisher("/q_learning/robot_action", RobotMoveDBToBlock)
-        rospy.Subscriber("/q_learning/reward", QLearningReward, self.get_reward)
+        rospy.Subscriber("/q_learning/reward", QLearningReward, self.receive_reward)
 
         # Give some time to initialize
         rospy.sleep(2)
@@ -56,53 +66,104 @@ class QLearning(object):
         self.states = list(map(lambda x: list(map(lambda y: int(y), x)), self.states))
 
         # initialize q table
-        # 64 rows = number of states
-        # 9 cols = number of actions
-        self.q_matrix = np.zeros((64, 9))
+        """64 rows = number of states
+        9 cols = number of actions"""
+        self.q_matrix = QMatrix(np.zeros((64, 9)))
+        # initialize extraneous algorithm values
+        self.history = []
+        self.time = 0
 
         # save states
-        self.prev_state = -1
+        self.prev_state = 0
         self.curr_state = 0
 
 
-    def get_reward(self):
-        pass
-        
-    def get_action(self):
-        pass
+    def has_converged(self):
+        """ Checks to see if the Q-Matrix has converged
+        or in other words, if the last 100 matrices are the same.
+        """
+        def all_equal(arr):
+            for i in arr:
+                if not np.array_equal(i, arr[0]):
+                    return False
+            return True
+        # checks to see if the last `hist_limit` q-matrices are the same
+        hist_limit = 100
+        convergence = all_equal(self.history[-hist_limit:])
+        return convergence
 
-    def save_q_matrix(self):
+    def perform_action(self, act):
+        """
+        Executes an action on the Q-Matrix.
+        Runs the "perform a_t" part of the algorithm. 
+        """
+        # translate action into message
+        action = self.actions[act]
+        dumbbell, block = action["dumbbell"], action["block"]
+
+        print(f"Now performing dumbbell: {dumbbell}, block: {block}")
+        
+        # update current state to be used in reward function
+        self.prev_action = act
+        self.prev_state = self.curr_state
+        self.curr_state = self.action_matrix[self.curr_state][act]
+
+        # perform action
+        self.action_pub.publish(dumbbell, block)
+
+    def receive_reward(self, data):
+        """
+        Runs after perform_action has been executed.
+        Runs the remainder of the Q-Learning algorithm
+        """
+        # calculate Q(s_t, a_t) + alpha * (r_t + gamma * max_a Q(s_t+1, a) - Q(s_t, a_t))
+        print(f"Got reward of {data.reward}. Iteration: {data.iteration_num}")
+
+        # adjustable vars
+        alpha = 1
+        gamma = 0.8
+        
+        # calculate
+        max_q = max(self.q_matrix[self.curr_state][:])
+        curr_q = self.q_matrix[self.prev_state][self.prev_action]
+        second_term = data.reward + gamma * (max_q - curr_q)
+
+        # update state with reward
+        self.q_matrix[self.prev_state][self.prev_action] += alpha * second_term
+        self.history.append(self.q_matrix)
+        self.time += 1
+
         self.q_pub.publish(self.q_matrix)
-        
-        act_msg = self.action_matrix[0][12]
-        self.action_pub.publish(act_msg)
-    
-    def check_converged(self):
-        """ Checks to see if the Q matrix has converged or not.
-        """
-        return False
 
-    def q_learning_algorithm(self):
-        """ Implements the Q Learning Algorithm as outlined in the write-up
-        """
-        # intialize Q
-        self.q_matrix
-        t = 0
-        while self.check_converged():
-            # select a_t at random
+    def run(self):
+        # send the first action
+        act_init = random.randint(0, 8)
+        self.perform_action(act_init)
+        rospy.sleep(2)
+
+        # loop q-learning algo
+        while self.has_converged():
+            print(f"Running iteration #{self.time}")
+
+            # choose action
             action_row = self.action_matrix[self.curr_state][:]
-            actions = []
+            valid_actions = []
             for i, action in enumerate(action_row):
-                if action > 0: actions.append(i)
-            a_t = random.choice(actions)
-            # perform a_t
-            self.curr_state = self.action_matrix[self.curr_state][a_t]
-            # receive r_t
-            r_t = self.get_reward()
-            # update Q
-            self.q_matrix
-            # update t
-            t += 1
+                # action is only valid if number between 0-8
+                if 0 <= action <= 8: 
+                    valid_actions.append(i)
+
+            if len(valid_actions):
+                self.curr_state = 0
+                continue
+            else:
+                a_t = random.choice(valid_actions)
+                # perform a_t, triggering rest of algo
+                self.perform_action(a_t)
+                # give the action a bit of time
+                rospy.sleep(2)
+
 
 if __name__ == "__main__":
     node = QLearning()
+    node.run()
