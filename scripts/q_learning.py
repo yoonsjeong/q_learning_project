@@ -5,20 +5,10 @@ import numpy as np
 import os
 
 import random
-from q_learning_project.msg import QLearningReward, RobotMoveDBToBlock
+from q_learning_project.msg import QMatrix, QMatrixRow, QLearningReward, RobotMoveDBToBlock
 
 # Path of directory on where this file is located
 path_prefix = os.path.dirname(__file__) + "/action_states/"
-
-class QMatrixRow(object):
-    def __init__(self, row):
-        self.q_matrix_row = row
-
-class QMatrix(object):
-    def __init__(self, np_matrix):
-        self.q_matrix = []
-        for i in np_matrix:
-            self.q_matrix.append(QMatrixRow(i))
 
 class QLearning(object):
     def __init__(self):
@@ -27,7 +17,7 @@ class QLearning(object):
 
         # Setup publishers and subscribers
         self.q_pub = rospy.Publisher("/q_learning/q_matrix", QMatrix, queue_size=10)
-        self.action_pub = rospy.Publisher("/q_learning/robot_action", RobotMoveDBToBlock)
+        self.action_pub = rospy.Publisher("/q_learning/robot_action", RobotMoveDBToBlock, queue_size=1)
         rospy.Subscriber("/q_learning/reward", QLearningReward, self.receive_reward)
 
         # Give some time to initialize
@@ -68,7 +58,7 @@ class QLearning(object):
         # initialize q table
         """64 rows = number of states
         9 cols = number of actions"""
-        self.q_matrix = QMatrix(np.zeros((64, 9)))
+        self.q_matrix = np.zeros((64, 9))
         # initialize extraneous algorithm values
         self.history = []
         self.time = 0
@@ -88,7 +78,7 @@ class QLearning(object):
                     return False
             return True
         # checks to see if the last `hist_limit` q-matrices are the same
-        hist_limit = 100
+        hist_limit = 5
         convergence = all_equal(self.history[-hist_limit:])
         return convergence
 
@@ -101,13 +91,21 @@ class QLearning(object):
         action = self.actions[act]
         dumbbell, block = action["dumbbell"], action["block"]
 
-        print(f"Now performing dumbbell: {dumbbell}, block: {block}")
+        # print(f"Now performing dumbbell: {dumbbell}, block: {block}")
         
         # update current state to be used in reward function
-        self.prev_action = act
-        self.prev_state = self.curr_state
-        self.curr_state = self.action_matrix[self.curr_state][act]
+        next_state = None
+        for i, _ in enumerate(self.action_matrix[self.curr_state]):
+            if self.action_matrix[self.curr_state][i] == act:
+                next_state = i
 
+        if next_state == None:
+            print("Something has gone terribly wrong.")
+            return
+
+        self.prev_action = act
+        self.prev_state = int(self.curr_state)
+        self.curr_state = int(next_state)
         # perform action
         self.action_pub.publish(dumbbell, block)
 
@@ -124,16 +122,30 @@ class QLearning(object):
         gamma = 0.8
         
         # calculate
-        max_q = max(self.q_matrix[self.curr_state][:])
+        max_q = max(self.q_matrix[self.curr_state])
         curr_q = self.q_matrix[self.prev_state][self.prev_action]
         second_term = data.reward + gamma * (max_q - curr_q)
+
+        print(f"About to add: {second_term}")
 
         # update state with reward
         self.q_matrix[self.prev_state][self.prev_action] += alpha * second_term
         self.history.append(self.q_matrix)
         self.time += 1
 
-        self.q_pub.publish(self.q_matrix)
+        self.publish_q_matrix()
+
+    def publish_q_matrix(self):
+        matrix = QMatrix()
+        matrix.q_matrix = []
+        for q_row in self.q_matrix:
+            row = QMatrixRow()
+            row.q_matrix_row = q_row.tolist()
+            matrix.q_matrix.append(row)
+        self.q_pub.publish(matrix)
+
+        filename = "/home/yoonsjeong/catkin_ws/src/q_learning_project/scripts/saved_matrix/q_matrix.txt"
+        np.savetxt(filename, self.q_matrix, delimiter=",")
 
     def run(self):
         # send the first action
@@ -143,25 +155,26 @@ class QLearning(object):
 
         # loop q-learning algo
         while self.has_converged():
-            print(f"Running iteration #{self.time}")
-
             # choose action
-            action_row = self.action_matrix[self.curr_state][:]
+            print(f"curr state: {self.curr_state}")
+            action_row = self.action_matrix[self.curr_state]
             valid_actions = []
             for i, action in enumerate(action_row):
                 # action is only valid if number between 0-8
-                if 0 <= action <= 8: 
-                    valid_actions.append(i)
+                if 0 <= action <= 8:
+                    valid_actions.append(int(action))
 
-            if len(valid_actions):
+            if len(valid_actions) == 0:
                 self.curr_state = 0
                 continue
             else:
                 a_t = random.choice(valid_actions)
                 # perform a_t, triggering rest of algo
+                print(f"Performing action {a_t}")
                 self.perform_action(a_t)
                 # give the action a bit of time
-                rospy.sleep(2)
+            
+        print("Finished training QMatrix.")
 
 
 if __name__ == "__main__":

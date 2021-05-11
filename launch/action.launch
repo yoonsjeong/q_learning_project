@@ -1,1 +1,6 @@
-<!-- TODO -->
+<launch>
+
+    <!-- run q matrix scripts -->
+    <node name="action" pkg="q_learning_project" type="action.py" />
+  
+</launch>
