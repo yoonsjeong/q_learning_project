@@ -140,6 +140,8 @@ class QLearning(object):
             max_q = 0
         else:
             max_q = max(self.q_matrix[self.curr_state])
+            print("QMatrix row to choose from:")
+            print(self.q_matrix[self.curr_state])
 
         curr_q = self.q_matrix[self.prev_state][self.prev_action]
         to_set = curr_q + alpha * (data.reward + (gamma * max_q) - curr_q)
