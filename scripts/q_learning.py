@@ -167,9 +167,33 @@ class QLearning(object):
             matrix.q_matrix.append(row)
         self.q_pub.publish(matrix)
 
-        filename = "/home/yoonsjeong/catkin_ws/src/q_learning_project/scripts/saved_matrix/q_matrix.txt"
+        filename = os.path.dirname(__file__) + "/saved_matrix/q_matrix.txt"
         np.savetxt(filename, self.q_matrix, delimiter=" ")
 
+
+    def load_in_actions_and_matrix(self):
+        q_matrix = np.loadtxt(os.path.dirname(__file__) + "/saved_matrix/q_matrix.txt", delimiter=" ")
+        action_matrix = np.loadtxt(os.path.dirname(__file__) + "/action_states/action_matrix.txt")
+        colors = ["RED", "GREEN", "BLUE"]
+        actions = np.loadtxt(os.path.dirname(__file__) + "/action_states/actions.txt")
+        actions = list(map(
+            lambda x: {"dumbbell": colors[int(x[0])], "block": int(x[1])},
+            actions
+        ))
+
+        first_state = 0
+        first_act = q_matrix[first_state].tolist().index(max(q_matrix[first_state]))
+        first_db, first_block = actions[first_act]["dumbbell"], actions[first_act]["block"]
+        
+        second_state = action_matrix[first_state].tolist().index(first_act)
+        second_act = q_matrix[second_state].tolist().index(max(q_matrix[second_state]))
+        second_db, second_block = actions[second_act]["dumbbell"], actions[second_act]["block"]
+        
+        third_state = action_matrix[second_state].tolist().index(second_act)
+        third_act = q_matrix[third_state].tolist().index(max(q_matrix[third_state]))
+        third_db, third_block = actions[third_act]["dumbbell"], actions[third_act]["block"]
+
+        out = [(first_db, first_block), (second_db, second_block), (third_db, third_block)]        
 
     def run(self):
         print("Now entering run function")

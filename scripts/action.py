@@ -8,6 +8,7 @@ from q_learning_project.msg import RobotMoveDBToBlock
 import time
 from tf.transformations import quaternion_from_euler, euler_from_quaternion
 import keras_ocr
+import os
 
 three = ["3", "s", "e", "5"]
 two = ["2"]
@@ -31,7 +32,9 @@ class RobotMovement(object):
         # ROS subscribe to the topic publishing actions for the robot to take
         rospy.Subscriber("/q_learning/robot_action", RobotMoveDBToBlock, self.prepare_to_take_robot_action)
         # information about the robot action to take
-        self.robot_action_queue = [RobotAction("BLUE", 1)]
+        self.robot_action_queue = []
+        self.load_in_actions_and_matrix()
+        print(f"Loaded in q matrix {self.robot_action_queue}")
         # set up ROS / cv bridge
         self.bridge = cv_bridge.CvBridge()
         # initalize the debugging window
@@ -384,6 +387,33 @@ class RobotMovement(object):
         # update distance to objcet in front of the robot
         self.distance = data.ranges[0]
 
+
+
+    def load_in_actions_and_matrix(self):
+        q_matrix = numpy.loadtxt(os.path.dirname(__file__) + "/saved_matrix/q_matrix.txt", delimiter=" ")
+        action_matrix = numpy.loadtxt(os.path.dirname(__file__) + "/action_states/action_matrix.txt")
+        colors = ["RED", "GREEN", "BLUE"]
+        actions = numpy.loadtxt(os.path.dirname(__file__) + "/action_states/actions.txt")
+        actions = list(map(
+            lambda x: {"dumbbell": colors[int(x[0])], "block": int(x[1])},
+            actions
+        ))
+
+        first_state = 0
+        first_act = q_matrix[first_state].tolist().index(max(q_matrix[first_state]))
+        first_db, first_block = actions[first_act]["dumbbell"], actions[first_act]["block"]
+        
+        second_state = action_matrix[first_state].tolist().index(first_act)
+        second_act = q_matrix[second_state].tolist().index(max(q_matrix[second_state]))
+        second_db, second_block = actions[second_act]["dumbbell"], actions[second_act]["block"]
+        
+        third_state = action_matrix[second_state].tolist().index(second_act)
+        third_act = q_matrix[third_state].tolist().index(max(q_matrix[third_state]))
+        third_db, third_block = actions[third_act]["dumbbell"], actions[third_act]["block"]
+
+        self.robot_action_queue = [RobotAction(first_db, first_block),
+            RobotAction(second_db, second_block), 
+            RobotAction(third_db, third_block)]        
 
     def run(self):
         rospy.spin()
