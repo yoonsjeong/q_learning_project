@@ -100,7 +100,9 @@ class QLearning(object):
         action = self.actions[act]
         dumbbell, block = action["dumbbell"], action["block"]
 
+        # this variable is to subvert asynchronous calls
         self.go = False
+        
         # queue up the action
         self.action_queue.append((act, next_state))
 
