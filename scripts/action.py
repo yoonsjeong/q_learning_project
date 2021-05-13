@@ -24,7 +24,7 @@ class RobotMovement(object):
         # ROS subscribe to the topic publishing actions for the robot to take
         rospy.Subscriber("/q_learning/robot_action", RobotMoveDBToBlock, self.prepare_to_take_robot_action)
         # information about the robot action to take
-        self.robot_action_queue = [RobotAction("blue", 1)]
+        self.robot_action_queue = [RobotAction("GREEN", 1)]
         # set up ROS / cv bridge
         self.bridge = cv_bridge.CvBridge()
         # initalize the debugging window
@@ -46,8 +46,11 @@ class RobotMovement(object):
         # arm
         self.move_group_arm = moveit_commander.MoveGroupCommander("arm")
         self.move_group_gripper = moveit_commander.MoveGroupCommander("gripper")
-        self.move_group_arm.go([-0.01, .75, -.3, -.35])
-        self.move_group_gripper.go([0.014, 0.014])
+
+        arm_start = [0, .85, -.3, -.35]
+        grip_start = [0.016, 0.016]
+        self.move_group_arm.go(arm_start)
+        self.move_group_gripper.go(grip_start)
 
         # movement
         self.twist = Twist()
@@ -68,27 +71,24 @@ class RobotMovement(object):
         if self.phase != 3:
             return
         self.phase = -1
-        time.sleep(0.5)
-        # move the arm to a position to drop the dumbbell
-        # TODO: find better values for this
-        arm_joint_goal = [0.0,
-                     math.radians(5.0),
-                     math.radians(10.0),
-                     math.radians(-20.0)]
-        self.move_group_arm.go(arm_joint_goal, wait=True)
-        self.move_group_arm.stop()
-        # open the gripper
-        # TODO: find better values for this
-        gripper_joint_goal = [0.009,0.0009]
-        self.move_group_gripper.go(gripper_joint_goal, wait=True)
-        self.move_group_gripper.stop()
-        # move the arm to the starting position
-        # TODO: find better values for this
-        arm_joint_goal = [0.0,
-                     math.radians(5.0),
-                     math.radians(10.0),
-                     math.radians(-20.0)]
-        self.move_group_arm.go(arm_joint_goal, wait=True)
+        arm = {
+            "back0": [0.65, 0.25, -0.3, -0.5],
+            "back1": [0.3, 0.5, -0.3, -0.5],
+            "back2": [0.3, 0.5, -0.3, .25],
+            "back3": [0.3, 0.5, -0.1, .25]
+        }
+        move_arm = self.move_group_arm
+
+        print("Now putting arm down!")
+        move_arm.go(arm["back0"], wait=True)
+        move_arm.stop()
+        move_arm.go(arm["back1"], wait=True)
+        move_arm.stop()
+        move_arm.go(arm["back2"], wait=True)
+        move_arm.stop()
+        move_arm.go(arm["back3"], wait=True)
+        move_arm.stop()
+
         self.phase = 4
     def execute_phase_2(self, msg):
         """ Uses OCR image recognition to figure out what direction
@@ -97,25 +97,36 @@ class RobotMovement(object):
         if self.phase != 2:
             return
         self.phase = -1
-        time.sleep(0.5)
-        image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
-        images = [image]
-        prediction_groups = pipline.recognize(images)
-        for num, box in prediction_groups[0]:
-            if num == self.block_goal:
-                # TODO: check that box is centered
-                print(box)
-                self.twist.linear.x = 0.1
-                # TODO: set appropriate value
-                while self.distance > 1:
-                    timer.sleep(.5)
-                self.twist.linear.x = 0
-                self.phase = 3
-                return
-        self.twist.angular.z = .1
-        timer.sleep(.5)
-        self.twist.angular.z = 0
-        self.phase = 2
+        
+        self.twist.linear.x = -.2
+        self.cmd_vel_pub.publish(self.twist)
+        time.sleep(5)
+        self.twist.linear.x = 0
+        self.cmd_vel_pub.publish(self.twist)
+
+        self.phase = 3
+
+        # time.sleep(0.5)
+        # image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
+        # images = [image]
+        # prediction_groups = pipline.recognize(images)
+        # for num, box in prediction_groups[0]:
+        #     if num == self.block_goal:
+        #         # TODO: check that box is centered
+        #         print(box)
+        #         self.twist.linear.x = 0.1
+        #         # TODO: set appropriate value
+        #         while self.distance > 1:
+        #             timer.sleep(.5)
+        #         self.twist.linear.x = 0
+        #         self.phase = 3
+        #         return
+        # self.twist.angular.z = .1
+        # timer.sleep(.5)
+        # self.twist.angular.z = 0
+        # self.phase = 2
+        pass
+
     def execute_phase_1(self):
         """ Tells robot to pick up the dumbbell and 
             moves dumbbell out of way of camera
@@ -127,32 +138,17 @@ class RobotMovement(object):
         print("Entered phase 1")
 
         move_arm = self.move_group_arm
-        move_grip = self.move_group_gripper
 
         arm = {
-            "lower": [0, 0.7, -0.25, -0.25],
-            "upper0": [0, 0.25, -0.25, 0],
-            "upper1": [0, 0.25, -0.25, -0.5],
-            "upper2": [0.65, 0.25, -0.25, -0.5],
-            "side": [1.5, 0.25, -0/75, -0.25],
+            "lower": [-0.01, .9, -.3, -0.5],
+            "upper0": [0.3, 0.5, -0.3, -0.5],
+            "upper1": [0.65, 0.25, -0.3, -0.5],
+            "side": [1.5, 0.25, -0.3, -0.5],
             "grab": [.05, .75,-.3, -.35]
         }
-        grip = {
-            "open": [0.01, 0.01],
-            "close": [0.007, 0.007]
-        }
 
-        # # open the gripper
-        # move_grip.go(grip["open"], wait=True)
-        # move_grip.stop()
-
-        # move the arm to the dumbbell
-        # move_arm.go(arm["lower"], wait=True)
-        # move_arm.stop()
-        
-        # close the gripper
-        move_grip.go(grip["close"], wait=True)
-        move_grip.stop()
+        move_arm.go(arm["lower"])
+        move_arm.stop()
 
         # move the arm to a resting position
         print("Now raising the arm up!")
@@ -160,15 +156,69 @@ class RobotMovement(object):
         move_arm.stop()
         move_arm.go(arm["upper1"], wait=True)
         move_arm.stop()
-        move_arm.go(arm["upper2"], wait=True)
+        move_arm.go(arm["side"], wait=True)
         move_arm.stop()
 
-        self.phase = -1
+        print("Should have picked up dumbbell at this stage.")
+        self.phase = 2
+
+    def move_to_col(self, image, lower, upper):
+        """ Moves to the color given by the lower and upper HSVs
+            Enters phase 1 once it is close enough.
+        """
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, lower, upper)
+        # we now erase all pixels that aren't of the selected color
+        h, w, d = image.shape
+        search_top = int(0)
+        search_bot = int(h)
+        mask[0:search_top, 0:w] = 0
+        mask[search_bot:h, 0:w] = 0
+        # using moments() function, determine the center of the colored pixels
+        M = cv2.moments(mask)
+        # if there are any colored pixels found
+        if M['m00'] > 0:
+            print("found colored pixels")
+            print(f"distance: {self.distance}")
+            # determine the center of the colored pixels in the image
+            cx, cy = int(M['m10']/M['m00']), int(M['m01']/M['m00'])
+            print(f"cy {cy} h {h}")
+            cv2.circle(image, (cx, cy), 20, (0,0,255), -1)
+            cv2.imshow("window", image)
+            cv2.waitKey(3)
+            k_p, err = .01, w/2 - cx
+
+            blue_cond  = self.selected_dumbbell == "BLUE" and 0.5 < self.distance < 0.73
+            green_cond = self.selected_dumbbell == "GREEN" and 0.5 < self.distance < 1.2
+            red_cond   = self.selected_dumbbell == "RED" and 305 < cy < 330
+
+            # if blue_cond or green_cond or red_cond:
+            if 305 < cy < 330:
+                print("Close to dumbbell! Now picking it up.")
+                self.twist.linear.x = 0
+                self.twist.angular.z = 0
+                self.cmd_vel_pub.publish(self.twist)
+                self.phase = 1 # Phase 1 executes pick-up
+            else:
+                print("Out of range of dumbbells. Moving forward.")
+                self.twist.linear.x = 0.02
+                self.twist.angular.z = k_p * err *.01
+                self.cmd_vel_pub.publish(self.twist)
+        else:
+            print("No colored pixels -- spinning in place.")
+            print(f"Distance {self.distance}")
+            self.twist.linear.x = 0
+            self.twist.angular.z = .1
+            self.cmd_vel_pub.publish(self.twist)
+            print(f"Curr phase: {self.phase}")
 
     def execute_phase_0(self, msg):
         """ Goes to dumbbell
         """
-        # print(f"Phase {self.phase}")
+        # show the debugging window
+        image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
+        cv2.imshow("window", image)
+        cv2.waitKey(3)
         # route to phase
         if self.phase == 1:
             self.execute_phase_1()
@@ -186,78 +236,60 @@ class RobotMovement(object):
             return
         print(f"executing phase 0: q size {len(self.robot_action_queue)}")
         time.sleep(0.5)
+
+        lower = {
+            "green": numpy.array([60, 60, 60]),
+            "red": numpy.array([0, 190, 160]),
+            "blue": numpy.array([94, 80, 2])
+        }
+        upper = {
+            "green": numpy.array([65, 255, 250]),
+            "red": numpy.array([2, 255, 255]),
+            "blue": numpy.array([126, 255, 255])
+        }
+
         if (len(self.robot_action_queue) > 0):
             robot_action_to_take = self.robot_action_queue[0]
             print(robot_action_to_take)
             self.selected_dumbbell = robot_action_to_take.robot_db.upper()
             self.block_goal = robot_action_to_take.goal_block_num
-            # converts the incoming ROS message to cv2 format and HSV (hue, saturation, value)
-            image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
-            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
             if self.selected_dumbbell == "GREEN":
-                print("selected green")
-                lower = numpy.array([ 60, 60, 60])
-                upper = numpy.array([65, 255, 250])
+                print("Searching for green")
+                self.move_to_col(image, lower["green"], upper["green"])
             elif self.selected_dumbbell == "RED":
-                print("selected red")
-                lower = numpy.array([ 161, 155, 84])
-                upper = numpy.array([179, 255, 255])
+                print("Searching for red")
+                self.move_to_col(image, lower["red"], upper["red"])
             elif self.selected_dumbbell == "BLUE":
-                print("selected blue")
-                lower = numpy.array([ 94, 80, 2])
-                upper = numpy.array([126, 255, 255])
+                print("Searching for blue")
+                self.move_to_col(image, lower["blue"], upper["blue"])
             else:
                 print("NO COLOR ERROR")
                 exit
-            mask = cv2.inRange(hsv, lower, upper)
-            # we now erase all pixels that aren't of the selected color
-            h, w, d = image.shape
-            search_top = int(0)
-            search_bot = int(h)
-            mask[0:search_top, 0:w] = 0
-            mask[search_bot:h, 0:w] = 0
-            # using moments() function, determine the center of the colored pixels
-            M = cv2.moments(mask)
-            # if there are any colored pixels found
-            if M['m00'] > 0:
-                print("found colored pixels")
-                print(f"distance: {self.distance}")
-                
-                # determine the center of the colored pixels in the image
-                cx, cy = int(M['m10']/M['m00']), int(M['m01']/M['m00'])
-                cv2.circle(image, (cx, cy), 20, (0,0,255), -1)
-                k_p, err = .01, w/2 - cx
-
-
-                if 0.5 < self.distance < 0.725:
-                    print("im close")
-                    self.twist.linear.x = 0
-                    self.twist.angular.z = 0
-                    self.cmd_vel_pub.publish(self.twist)
-                    self.phase = 1
-                else:
-                    print("im too far")
-                    self.twist.linear.x = 0.02
-                    self.twist.angular.z = k_p * err *.01
-                    self.cmd_vel_pub.publish(self.twist)
-
-            else:
-                print("no colored pixels")
-                print(f"distance {self.distance}")
-                self.twist.angular.z = .1
-                self.cmd_vel_pub.publish(self.twist)
-                print(f"done {self.phase}")
-        # show the debugging window
-        cv2.imshow("window", image)
-        cv2.waitKey(3)
+        else:
+            print("Robot action queue was empty.")
+        
 
     def prepare_to_take_robot_action(self, data):
         # add action to queue
         self.robot_action_queue.append(RobotAction(data.robot_db, data.block_id))
+    
     def update_distance(self, data):
         time.sleep(0.5)
+
+        
+        ranges_to_avg = [-1, 0, 1] #[-10, -5, 0, 5, 10]
+        
+        total = 0
+        count = 0
+        for rng in ranges_to_avg:
+            if data.ranges[rng] != float("inf"):
+                total += data.ranges[rng]
+                count += 1
+        
         # update distance to objcet in front of the robot
-        self.distance = data.ranges[0]
+        self.distance = 0 if count == 0 else total / count
+
+
     def run(self):
         rospy.spin()
 if __name__=="__main__":
