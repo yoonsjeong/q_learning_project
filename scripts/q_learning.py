@@ -3,6 +3,7 @@
 import rospy
 import numpy as np
 import os
+from time import sleep
 
 import random
 from q_learning_project.msg import QMatrix, QMatrixRow, QLearningReward, RobotMoveDBToBlock
@@ -65,9 +66,12 @@ class QLearning(object):
         self.time = 0
 
         # save states
-        self.prev_state = 0
+        self.action_queue = []
         self.curr_state = 0
+        self.go = False
+        sleep(2)
         print("Finishing init")
+
 
 
     def has_converged(self):
@@ -81,46 +85,36 @@ class QLearning(object):
             return True
 
         hist_limit = 100
-        if len(self.history) < 10000:
+        if len(self.history) < 1000:
             return False
         
         # checks to see if the last `hist_limit` q-matrices are the same
         convergence = all_equal(self.history[-hist_limit:])
         return convergence
 
-    def perform_action(self, act):
-        """
-        Executes an action on the Q-Matrix.
-        Runs the "perform a_t" part of the algorithm. 
+    def perform_action(self, act, next_state):
+        """ Pushes action to action publisher
+            Pushes an action to self.action_queue
         """
         # translate action into message
         action = self.actions[act]
         dumbbell, block = action["dumbbell"], action["block"]
 
-        # print(f"Now performing dumbbell: {dumbbell}, block: {block}")
-        
-        # update current state to be used in reward function
-        next_state = None
-        for i, _ in enumerate(self.action_matrix[self.curr_state]):
-            if self.action_matrix[self.curr_state][i] == act:
-                next_state = i
+        self.go = False
+        # queue up the action
+        self.action_queue.append((act, next_state))
 
-        if next_state == None:
-            print("Something has gone terribly wrong.")
-            return
-
-        self.prev_action = act
-        self.prev_state = int(self.curr_state)
-        self.curr_state = int(next_state)
         # perform action
         self.action_pub.publish(dumbbell, block)
 
-    def get_valid_actions(self, state):
+    def get_valid_actions(self, state: int) -> list:
+        """ Gets list of all possible actions 
+        """
         action_row = self.action_matrix[state]
         valid_actions = []
-        for action in action_row:
+        for next_state, action in enumerate(action_row):
             if 0 <= action <= 8:
-                valid_actions.append(int(action))
+                valid_actions.append((int(action), next_state))
         return valid_actions
 
     def receive_reward(self, data):
@@ -128,6 +122,11 @@ class QLearning(object):
         Runs after perform_action has been executed.
         Runs the remainder of the Q-Learning algorithm
         """
+        if len(self.action_queue) == 0:
+            print("Received reward but no action in queue.")
+            return
+
+        action, next_state = self.action_queue.pop(0)
         # calculate Q(s_t, a_t) + alpha * (r_t + gamma * max_a Q(s_t+1, a) - Q(s_t, a_t))
         print(f"Got reward of {data.reward}. Iteration: {self.time}")
 
@@ -136,27 +135,30 @@ class QLearning(object):
         alpha = 1.0
 
         # calculate
-        if len(self.get_valid_actions(self.prev_state)) == 0: 
+        if len(self.get_valid_actions(self.curr_state)) == 0: 
             max_q = 0
         else:
-            max_q = max(self.q_matrix[self.curr_state])
-            print("QMatrix row to choose from:")
-            print(self.q_matrix[self.curr_state])
+            max_q = max(self.q_matrix[next_state])
 
-        curr_q = self.q_matrix[self.prev_state][self.prev_action]
+        curr_q = self.q_matrix[self.curr_state][action]
         to_set = curr_q + alpha * (data.reward + (gamma * max_q) - curr_q)
+        self.q_matrix[self.curr_state][action] = to_set
 
-        # print(f"About to add: {to_add}")
-        if to_set != 0: print(f"About to set {to_set}")
-
-        # update state with reward
-        self.q_matrix[self.prev_state][self.prev_action] = to_set
+        # update state
         self.history.append(self.q_matrix)
         self.time += 1
+        if len(self.get_valid_actions(self.curr_state)) == 0: 
+            self.curr_state = 0
+        else:
+            self.curr_state = next_state
 
+        self.go = True
         self.publish_q_matrix()
 
     def publish_q_matrix(self):
+        """ Converts self.q_matrix (a numpy array)
+            into the form of a QMatrix object
+        """
         matrix = QMatrix()
         matrix.q_matrix = []
         for q_row in self.q_matrix:
@@ -173,28 +175,31 @@ class QLearning(object):
         print("Now entering run function")
         # send the first action
         # rospy.sleep(0.5)
-        act_init = random.randint(0, 8)
-        self.perform_action(act_init)
+        valid_actions = self.get_valid_actions(self.curr_state)
+        a_t, next_state = random.choice(valid_actions)
+        self.perform_action(a_t, next_state)
         # rospy.sleep(0.5)
 
         print("Starting the loop")
+        print(f"{self.go}")
         # loop q-learning algo
         while not self.has_converged():
-            # choose action
-            valid_actions = self.get_valid_actions(self.curr_state)
+            if self.go:
+                valid_actions = self.get_valid_actions(self.curr_state)
 
-            if len(valid_actions) == 0:
-                # print("No more valid actions. Resetting world.")
-                self.curr_state = 0
-                continue
+                if valid_actions == []:
+                    self.curr_state = 0
+                    valid_actions = self.get_valid_actions(0)
+                a_t, next_state = random.choice(valid_actions)
+                self.perform_action(a_t, next_state)
             else:
-                a_t = random.choice(valid_actions)
-                # print(f"There were {len(valid_actions)} valid actions.")
-                # print(f"Chose action {a_t} from state {self.curr_state}.")
-                # perform a_t, triggering rest of algo
-                # print(f"Performing action {a_t}")
-                self.perform_action(a_t)
-                # give the action a bit of time
+                continue
+            # choose action
+            # print(f"There were {len(valid_actions)} valid actions.")
+            # print(f"Chose action {a_t} from state {self.curr_state}.")
+            # perform a_t, triggering rest of algo
+            # print(f"Performing action {a_t}")
+            # give the action a bit of time
 
             
         print("Finished training QMatrix.")
