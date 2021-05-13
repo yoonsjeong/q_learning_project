@@ -102,7 +102,7 @@ class QLearning(object):
 
         # this variable is to subvert asynchronous calls
         self.go = False
-        
+
         # queue up the action
         self.action_queue.append((act, next_state))
 
@@ -165,7 +165,7 @@ class QLearning(object):
         matrix.q_matrix = []
         for q_row in self.q_matrix:
             row = QMatrixRow()
-            row.q_matrix_row = q_row.tolist()
+            row.q_matrix_row = q_row.astype(np.int16).tolist()
             matrix.q_matrix.append(row)
         self.q_pub.publish(matrix)
 
