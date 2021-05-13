@@ -25,14 +25,11 @@ class RobotAction(object):
         return output_str
 class RobotMovement(object):
     def __init__(self):
-        # initialize this node
-        rospy.init_node('turtlebot3_movement')
+        # SUBSCRIBERS/PUBLISHERS
+        # ======================
         # set-up keras and cv libraries
         self.pipeline = keras_ocr.pipeline.Pipeline()
         self.bridge = cv_bridge.CvBridge()
-
-        # SUBSCRIBERS/PUBLISHERS
-        # ======================
         # camera
         self.image_sub = rospy.Subscriber('camera/rgb/image_raw', Image, self.execute_phase_0)
         # lidar
@@ -43,9 +40,23 @@ class RobotMovement(object):
         # movement
         self.cmd_vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=100)
 
-        # let all the above initialize
-        time.sleep(5)
+        time.sleep(5) # give it a bit of time!
         print("Finished initializing subscribers/publishers!")
+
+        # PHASE SYSTEM
+        # ============
+        # We use a "phase" system paradigm to perform the movement portion
+        # of this assignment. Splitting into phases allowed us to modularize
+        # and work on different components at the same time.
+        # When a phase is actively being executed it is set to -1. 
+        # When it completes a phase, it will move on to the next phase.
+        # 
+        # Phase 0 - Move towards a colored dumbbell
+        # Phase 1 - Pick up the dumbbell 
+        # Phase 2 - Move towards numbered block
+        # Phase 3 - Put down the dumbbell
+        # Phase 4 - Reset and move to Phase 0.
+        self.phase = 0
 
         # TURTLEBOT STATES
         # ================
@@ -61,33 +72,17 @@ class RobotMovement(object):
         self.move_group_gripper.go(grip_start)
         # movement
         self.twist = Twist()
-
-
         # goal states (dumbbell and block goal)
         self.robot_action_queue = []
         self.selected_dumbbell = ""
         self.block_goal = 0
         # takes in q_matrix and updates goal states
         self.load_in_actions_and_matrix()
-        print(f"Loaded in q matrix {self.robot_action_queue}")
+        print(f"Loaded in q matrix: [{[str(act) for act in self.robot_action_queue]}]")
         
-        # PHASE SYSTEM
-        # ============
-        # We use a "phase" system paradigm to perform the movement portion
-        # of this assignment. Splitting into phases allowed us to modularize
-        # and work on different components at the same time.
-        # When a phase is actively being executed it is set to -1. 
-        # When it completes a phase, it will move on to the next phase.
-        # 
-        # Phase 0 - Move towards a colored dumbbell
-        # Phase 1 - Pick up the dumbbell 
-        # Phase 2 - Move towards numbered block
-        # Phase 3 - Put down the dumbbell
-        # Phase 4 - Reset and move to Phase 0.
-        self.phase = 0
+        # initialize this node
+        rospy.init_node('turtlebot3_movement')
         print("Finished initialization.")
-
-
 
     def execute_phase_4(self):
         """ Resets the robot and pops the action from the queue.
@@ -99,6 +94,7 @@ class RobotMovement(object):
         self.phase = 0
     def execute_phase_3(self):
         """ Puts down the dumbbell
+            (Puts it down carefully, so it won't topple.)
         """
         if self.phase != 3:
             return
@@ -248,13 +244,11 @@ class RobotMovement(object):
         print("Entered phase 1")
 
         move_arm = self.move_group_arm
-
         arm = {
             "lower": [-0.01, .9, -.3, -0.5],
-            "upper0": [0.3, 0.5, -0.3, -0.5],
-            "upper1": [0.65, 0.25, -0.3, -0.5],
+            "upper": [0.3, 0.5, -0.3, -0.5],
+            "upper_diag": [0.65, 0.25, -0.3, -0.5],
             "side": [1.5, 0.25, -0.3, -0.5],
-            "grab": [.05, .75,-.3, -.35]
         }
 
         move_arm.go(arm["lower"])
@@ -262,20 +256,23 @@ class RobotMovement(object):
 
         # move the arm to a resting position
         print("Now raising the arm up!")
-        move_arm.go(arm["upper0"], wait=True)
+        move_arm.go(arm["upper"], wait=True)
         move_arm.stop()
-        move_arm.go(arm["upper1"], wait=True)
+        move_arm.go(arm["upper_diag"], wait=True)
         move_arm.stop()
         move_arm.go(arm["side"], wait=True)
         move_arm.stop()
+        print("Should be holding dumbbell at this point.")
 
-        print("Should have picked up dumbbell at this stage.")
+        # Scoot the robot back so it is now closer to the numbered blocks.
         self.twist.linear.x =-.2
         self.cmd_vel_pub.publish(self.twist)
         time.sleep(5)
+
         self.twist.linear.x = 0
         self.cmd_vel_pub.publish(self.twist)
 
+        print("Ready for Phase 2.")
         self.phase = 2
 
     def move_to_col(self, image, lower, upper):
@@ -286,30 +283,30 @@ class RobotMovement(object):
         mask = cv2.inRange(hsv, lower, upper)
         # we now erase all pixels that aren't of the selected color
         h, w, d = image.shape
-        search_top = int(0)
-        search_bot = int(h)
-        mask[0:search_top, 0:w] = 0
-        mask[search_bot:h, 0:w] = 0
+        search_top, search_bot = int(0), int(h)
+        mask[0:search_top, 0:w], mask[search_bot:h, 0:w] = 0, 0
         # using moments() function, determine the center of the colored pixels
         M = cv2.moments(mask)
         # if there are any colored pixels found
         if M['m00'] > 0:
-            print("found colored pixels")
-            print(f"distance: {self.distance}")
             # determine the center of the colored pixels in the image
             cx, cy = int(M['m10']/M['m00']), int(M['m01']/M['m00'])
-            print(f"cy {cy} h {h}")
-            cv2.circle(image, (cx, cy), 20, (0,0,255), -1)
+            # draw the circle!
+            # cv2.circle(image, (cx, cy), 20, (0,0,255), -1)
             # cv2.imshow("window", image)
-            cv2.waitKey(3)
-            k_p, err = .01, w/2 - cx
+            # cv2.waitKey(3)
 
-            blue_cond  = self.selected_dumbbell == "BLUE" and 0.5 < self.distance < 0.73
-            green_cond = self.selected_dumbbell == "GREEN" and 0.5 < self.distance < 1.2
-            red_cond   = self.selected_dumbbell == "RED" and 305 < cy < 330
+            print("Colored pixels were found in the image.")
+            print(f"Distance: {self.distance}")
+            print(f"cy: {cy}, h: {h}")
 
             # if blue_cond or green_cond or red_cond:
-            if 305 < cy < 330:
+            # blue_cond  = self.selected_dumbbell == "BLUE" and 0.5 < self.distance < 0.73
+            # green_cond = self.selected_dumbbell == "GREEN" and 0.5 < self.distance < 1.2
+            # red_cond   = self.selected_dumbbell == "RED" and 305 < cy < 330
+            dumbbell_close_enough = 305 < cy < 330
+
+            if dumbbell_close_enough: 
                 print("Close to dumbbell! Now picking it up.")
                 self.twist.linear.x = 0
                 self.twist.angular.z = 0
@@ -317,19 +314,22 @@ class RobotMovement(object):
                 self.phase = 1 # Phase 1 executes pick-up
             else:
                 print("Out of range of dumbbells. Moving forward.")
+                # pid control variables!
+                k_p, err = .01, w/2 - cx
+                # alter trajectory accordingly
                 self.twist.linear.x = 0.02
                 self.twist.angular.z = k_p * err *.01
                 self.cmd_vel_pub.publish(self.twist)
         else:
             print("No colored pixels -- spinning in place.")
-            print(f"Distance {self.distance}")
             self.twist.linear.x = 0
             self.twist.angular.z = .1
             self.cmd_vel_pub.publish(self.twist)
-            print(f"Curr phase: {self.phase}")
 
     def execute_phase_0(self, msg):
-        """ Goes to dumbbell
+        """ Phase 0 is the base state.
+            Primarily, it searches for colored pixels and moves to the dumbbell.
+            Much of the logic is abstracted to move_to_col.
         """
         # show the debugging window
         image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
@@ -367,16 +367,18 @@ class RobotMovement(object):
         if (len(self.robot_action_queue) > 0):
             robot_action_to_take = self.robot_action_queue[0]
             print(robot_action_to_take)
-            self.selected_dumbbell = robot_action_to_take.robot_db.upper()
+            
+            self.selected_dumbbell = robot_action_to_take.robot_db
             self.block_goal = robot_action_to_take.goal_block_num
-            if self.selected_dumbbell == "GREEN":
-                print("Searching for green")
+            
+            dumbbell = self.selected_dumbbell.upper()
+
+            print(f"Searching for {dumbbell}")
+            if dumbbell == "GREEN":
                 self.move_to_col(image, lower["green"], upper["green"])
-            elif self.selected_dumbbell == "RED":
-                print("Searching for red")
+            elif dumbbell == "RED":
                 self.move_to_col(image, lower["red"], upper["red"])
-            elif self.selected_dumbbell == "BLUE":
-                print("Searching for blue")
+            elif dumbbell == "BLUE":
                 self.move_to_col(image, lower["blue"], upper["blue"])
             else:
                 print("NO COLOR ERROR")
