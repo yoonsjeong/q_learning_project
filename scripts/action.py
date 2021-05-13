@@ -27,49 +27,67 @@ class RobotMovement(object):
     def __init__(self):
         # initialize this node
         rospy.init_node('turtlebot3_movement')
-        # download pre-trained model
+        # set-up keras and cv libraries
         self.pipeline = keras_ocr.pipeline.Pipeline()
-        # ROS subscribe to the topic publishing actions for the robot to take
-        rospy.Subscriber("/q_learning/robot_action", RobotMoveDBToBlock, self.prepare_to_take_robot_action)
-        # information about the robot action to take
-        self.robot_action_queue = []
-        self.load_in_actions_and_matrix()
-        print(f"Loaded in q matrix {self.robot_action_queue}")
-        # set up ROS / cv bridge
         self.bridge = cv_bridge.CvBridge()
-        # initalize the debugging window
-        # cv2.namedWindow("window", 1)
-        # Vars to store current action goals
-        self.selected_dumbbell = ""
-        self.block_goal = 0
-        # Var to store current phase (0 - go to dumbell, 1 - pick up dumbell, 2 - go to block, 3 - put down dumbell, 4 - reset)
-        self.phase = 0
-        # subscribe to the robot's RGB camera data stream
-        print("starting robot camera")
-        self.image_sub = rospy.Subscriber('camera/rgb/image_raw', Image, self.execute_phase_0)
-        # variable to store distance to front object
-        self.distance = 0
 
+        # SUBSCRIBERS/PUBLISHERS
+        # ======================
+        # camera
+        self.image_sub = rospy.Subscriber('camera/rgb/image_raw', Image, self.execute_phase_0)
         # lidar
         rospy.Subscriber("scan", LaserScan, self.update_distance)
-
-        # arm
+        # arm and gripper
         self.move_group_arm = moveit_commander.MoveGroupCommander("arm")
         self.move_group_gripper = moveit_commander.MoveGroupCommander("gripper")
+        # movement
+        self.cmd_vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=100)
 
+        # let all the above initialize
+        time.sleep(5)
+        print("Finished initializing subscribers/publishers!")
+
+        # TURTLEBOT STATES
+        # ================
+        # camera cv/ocr vars
+        self.new_object = False
+        self.found_box = False
+        # lidar distance
+        self.distance = 0
+        # arm and gripper
         arm_start = [0, .85, -.3, -.35]
         grip_start = [0.016, 0.016]
         self.move_group_arm.go(arm_start)
         self.move_group_gripper.go(grip_start)
-
         # movement
-        time.sleep(5)
         self.twist = Twist()
-        self.cmd_vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=100)
 
-        # ocr
-        self.new_object = False
-        self.found_box = False
+
+        # goal states (dumbbell and block goal)
+        self.robot_action_queue = []
+        self.selected_dumbbell = ""
+        self.block_goal = 0
+        # takes in q_matrix and updates goal states
+        self.load_in_actions_and_matrix()
+        print(f"Loaded in q matrix {self.robot_action_queue}")
+        
+        # PHASE SYSTEM
+        # ============
+        # We use a "phase" system paradigm to perform the movement portion
+        # of this assignment. Splitting into phases allowed us to modularize
+        # and work on different components at the same time.
+        # When a phase is actively being executed it is set to -1. 
+        # When it completes a phase, it will move on to the next phase.
+        # 
+        # Phase 0 - Move towards a colored dumbbell
+        # Phase 1 - Pick up the dumbbell 
+        # Phase 2 - Move towards numbered block
+        # Phase 3 - Put down the dumbbell
+        # Phase 4 - Reset and move to Phase 0.
+        self.phase = 0
+        print("Finished initialization.")
+
+
 
     def execute_phase_4(self):
         """ Resets the robot and pops the action from the queue.
@@ -365,11 +383,6 @@ class RobotMovement(object):
                 exit
         else:
             print("Robot action queue was empty.")
-        
-
-    def prepare_to_take_robot_action(self, data):
-        # add action to queue
-        self.robot_action_queue.append(RobotAction(data.robot_db, data.block_id))
     
     def update_distance(self, data):
         time.sleep(0.5)
