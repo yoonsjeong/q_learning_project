@@ -60,6 +60,7 @@ class RobotMovement(object):
         self.move_group_gripper.go(grip_start)
 
         # movement
+        time.sleep(5)
         self.twist = Twist()
         self.cmd_vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=100)
 
@@ -154,7 +155,6 @@ class RobotMovement(object):
             print("performing ocr on new object")
             images = [image]
             prediction_groups = self.pipeline.recognize(images)
-            time.sleep(30)
             print(f"{prediction_groups}")
             for num, box in prediction_groups[0]:
                 print(f"I detected a {num}")
@@ -164,14 +164,14 @@ class RobotMovement(object):
                     self.new_object = False
                     self.phase = 2
                     return
-            self.new_object = False
             print("did not find the box")
             self.twist.angular.z =.1
             self.cmd_vel_pub.publish(self.twist)
-            time.sleep(10)
+            time.sleep(5)
             self.twist.angular.z = 0
             self.cmd_vel_pub.publish(self.twist)
             print("done")
+            self.new_object = False
             self.phase = 2
 
         else:
@@ -372,17 +372,17 @@ class RobotMovement(object):
         time.sleep(0.5)
 
         
-        ranges_to_avg = [-1, 0, 1] #[-10, -5, 0, 5, 10]
+        # ranges_to_avg = [-1, 0, 1] #[-10, -5, 0, 5, 10]
         
-        total = 0
-        count = 0
-        for rng in ranges_to_avg:
-            if data.ranges[rng] != float("inf"):
-                total += data.ranges[rng]
-                count += 1
+        # total = 0
+        # count = 0
+        # for rng in ranges_to_avg:
+        #     if data.ranges[rng] != float("inf"):
+        #         total += data.ranges[rng]
+        #         count += 1
         
         # update distance to objcet in front of the robot
-        self.distance = 0 if count == 0 else total / count
+        self.distance = data.ranges[0]
 
 
     def run(self):
