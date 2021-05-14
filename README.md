@@ -1,5 +1,10 @@
 # q_learning_project
 
+## Youtube
+We were having difficulty converting the gif using ffmpeg so we uploaded the final mp4 file to Youtube.
+You can watch it here:
+https://youtu.be/4yq8lTnCyd0
+
 ## GIF
 ![gif][gif]
 
