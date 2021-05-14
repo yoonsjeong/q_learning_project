@@ -1,5 +1,8 @@
 # q_learning_project
 
+## GIF
+![gif][gif]
+
 ## Writeup
 
 ### Objectives Description
@@ -111,4 +114,4 @@ Dante Gil-Marin, Yoon Jeong
 
 By next Wednesday our plan is to have completed at minimum the Q learning matrix algorithm and robot movement. We hope that by next Friday we will have implemented the other portions. We hope to be finished with the project by the Sunday prior to the project being due, and just be working on debugging if necessary on the Monday and Tuesday afterwards.
 
-
+[gif]: ./media/success.gif
